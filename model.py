@@ -57,7 +57,8 @@ class Model():
         # Global generator: Encode -> quantize -> reconstruct
         # =======================================================================================================>>>
         with tf.variable_scope('generator'):
-            self.feature_map = Network.encoder(self.example, config, self.training_phase, config.channel_bottleneck)
+            self.feature_map, self.enc_conv_3, self.enc_conv_1 = Network.attention_encoder(self.example, config, self.training_phase, config.channel_bottleneck)
+            #self.feature_map = Network.encoder(self.example, config, self.training_phase, config.channel_bottleneck)
             self.w_hat = Network.quantizer(self.feature_map, config)
 
             if config.use_conditional_GAN:
@@ -78,10 +79,15 @@ class Model():
             else:
                 self.z = self.w_hat
 
-            self.reconstruction = Network.decoder(self.z, config, self.training_phase, C=config.channel_bottleneck)
+            self.reconstruction, self.dec_deconv_1, self.dec_deconv_3 = Network.attention_decoder(self.z, config, self.training_phase, config.channel_bottleneck)
 
         print('Real image shape:', self.example.get_shape().as_list())
         print('Reconstruction shape:', self.reconstruction.get_shape().as_list())
+        print('Encoded image conv_1 shape:', self.enc_conv_1.get_shape().as_list())
+        print('Encoded image conv_3 shape:', self.enc_conv_3.get_shape().as_list())
+        print('Decoded image deconv_1 shape:', self.dec_deconv_1.get_shape().as_list())
+        print('Decoded image deconv_3 shape:', self.dec_deconv_3.get_shape().as_list())
+
 
         if evaluate:
             return
@@ -100,9 +106,17 @@ class Model():
             D_Gz, D_Gz2, D_Gz4, *Dk_Gz = Network.multiscale_discriminator(self.reconstruction, config, self.training_phase, 
                 use_sigmoid=config.use_vanilla_GAN, mode='reconstructed', reuse=True)
         else:
+            # multiscale feature GAN
             D_x = Network.discriminator(self.example, config, self.training_phase, use_sigmoid=config.use_vanilla_GAN)
             D_Gz = Network.discriminator(self.reconstruction, config, self.training_phase, use_sigmoid=config.use_vanilla_GAN, reuse=True)
-         
+            with tf.variable_scope('discriminator', reuse=False):
+                Dx8_x_conv_3 = Network.feature_disx8(self.enc_conv_3, 'enc_conv_3')
+                Dx8_Gz_deconv_1 = Network.feature_disx8(self.dec_deconv_1, 'dec_deconv_1', reuse=True)
+    
+                Dx2_x_conv_1 = Network.feature_disx2(self.enc_conv_1, 'enc_conv_1')
+                Dx2_Gz_deconv_3 = Network.feature_disx2(self.dec_deconv_3, 'dec_deconv_3', reuse=True)
+
+
         # Loss terms 
         # =======================================================================================================>>>
         if config.use_vanilla_GAN is True:
@@ -111,21 +125,46 @@ class Model():
                 labels=tf.ones_like(D_x)))
             D_loss_gen = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=D_Gz,
                 labels=tf.zeros_like(D_Gz)))
-            self.D_loss = D_loss_real + D_loss_gen
+
+            Dx2_loss_real = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=Dx2_x_conv_1,
+                labels=tf.ones_like(Dx2_x_conv_1)))
+            Dx2_loss_gen = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=Dx2_Gz_deconv_3,
+                labels=tf.zeros_like(Dx2_Gz_deconv_3)))
+
+            Dx8_loss_real = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=Dx8_x_conv_3,
+                labels=tf.ones_like(Dx8_x_conv_3)))
+            Dx8_loss_gen = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=Dx8_Gz_deconv_1,
+                labels=tf.ones_like(Dx8_Gz_deconv_1)))
+
+            self.D_loss = D_loss_real + D_loss_gen + Dx2_loss_real + Dx2_loss_gen + Dx8_loss_real + Dx8_loss_gen
             # G_loss = max log D(G(z))
             self.G_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=D_Gz,
                 labels=tf.ones_like(D_Gz)))
+            self.G_loss += tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=Dx2_Gz_deconv_3,
+                labels=tf.ones_like(Dx2_Gz_deconv_3)))
+            self.G_loss += tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=Dx8_Gz_deconv_1,
+                labels=tf.ones_like(Dx8_Gz_deconv_1)))
+
         else:
             # Minimize $\chi^2$ divergence
             self.D_loss = tf.reduce_mean(tf.square(D_x - 1.)) + tf.reduce_mean(tf.square(D_Gz))
+            self.Dx2_loss = tf.reduce_mean(tf.square(Dx2_x_conv_1 - 1.)) + tf.reduce_mean(tf.square(Dx2_Gz_deconv_3))
+            self.Dx8_loss = tf.reduce_mean(tf.square(Dx8_x_conv_3 - 1.)) + tf.reduce_mean(tf.square(Dx8_Gz_deconv_1))
+            self.D_loss += self.Dx2_loss + self.Dx8_loss            
+            
             self.G_loss = tf.reduce_mean(tf.square(D_Gz - 1.))
+            self.Gx2_loss = tf.reduce_mean(tf.square(Dx2_Gz_deconv_3 - 1.))
+            self.Gx8_loss = tf.reduce_mean(tf.square(Dx8_Gz_deconv_1 - 1.))
+            self.G_loss += self.Gx2_loss + self.Gx8_loss
 
             if config.multiscale:
                 self.D_loss += tf.reduce_mean(tf.square(D_x2 - 1.)) + tf.reduce_mean(tf.square(D_x4 - 1.))
                 self.D_loss += tf.reduce_mean(tf.square(D_Gz2)) + tf.reduce_mean(tf.square(D_Gz4))
 
         distortion_penalty = config.lambda_X * tf.losses.mean_squared_error(self.example, self.reconstruction)
-        self.G_loss += distortion_penalty
+        info_distortion_penalty = tf.nn.l1_loss(self.enc_conv_1, self.dec_deconv_3)
+        info_distortion_penalty += tf.nn.l1_loss(self.enc_conv_3, self.dec_deconv_1)
+        self.G_loss += distortion_penalty + config.lambda_i * info_distortion_penalty
 
         if config.use_feature_matching_loss:  # feature extractor for generator
             D_x_layers, D_Gz_layers = [j for i in Dk_x for j in i], [j for i in Dk_Gz for j in i]

@@ -24,6 +24,7 @@ class config_train(object):
 
     # Compression
     lambda_X = 12
+    lambda_i = 6
     channel_bottleneck = 8
     sample_noise = True
     use_vanilla_GAN = False
