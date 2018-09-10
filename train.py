@@ -42,8 +42,10 @@ def train(config, args):
     else:
         feed_dict_test_init = {gan.test_path_placeholder: test_paths}
         feed_dict_train_init = {gan.path_placeholder: paths}
-
-    with tf.Session(config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)) as sess:
+    tfconfig = tf.ConfigProto(allow_soft_placement=True, log_device_placement=False)
+    tfconfig.gpu_options.allow_growth = True
+    
+    with tf.Session(config=tfconfig) as sess:
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
         train_handle = sess.run(gan.train_iterator.string_handle())
@@ -68,17 +70,17 @@ def train(config, args):
             # Run diagnostics
             G_loss_best, D_loss_best = Utils.run_diagnostics(gan, config, directories, sess, saver, train_handle,
                 start_time, epoch, args.name, G_loss_best, D_loss_best)
-
+            print('diagnostics compelete!!')
             while True:
                 try:
                     # Update generator
                     # for _ in range(8):
                     feed_dict = {gan.training_phase: True, gan.handle: train_handle}
                     sess.run(gan.G_train_op, feed_dict=feed_dict)
-
+                    print('G_train_op compelete!')
                     # Update discriminator 
                     step, _ = sess.run([gan.D_global_step, gan.D_train_op], feed_dict=feed_dict)
-
+                    print('D_train_op compelete')
                     if step % config.diagnostic_steps == 0:
                         G_loss_best, D_loss_best = Utils.run_diagnostics(gan, config, directories, sess, saver, train_handle,
                             start_time, epoch, args.name, G_loss_best, D_loss_best)

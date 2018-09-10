@@ -26,11 +26,11 @@ class config_train(object):
     lambda_X = 12
     lambda_i = 6
     channel_bottleneck = 8
-    sample_noise = True
+    sample_noise = False#True
     use_vanilla_GAN = False
-    use_feature_matching_loss = True
+    use_feature_matching_loss = False#True
     upsample_dim = 256
-    multiscale = True
+    multiscale = False#True
     feature_matching_weight = 10
     use_conditional_GAN = False
 
