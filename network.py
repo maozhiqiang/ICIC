@@ -1,6 +1,3 @@
-""" Modular components of computational graph
-    JTan 2018
-"""
 import tensorflow as tf
 from utils import Utils
 
@@ -101,7 +98,13 @@ class Network(object):
             x = actv(x)
         
             return x
-
+        
+        def pixel_shuffle_block(x, out_channels, scale=2, actv=actv):
+            def _PS(x, scale, out_channels):
+                assert x.get_shape().as_list()[-1] == ((scale ** 2) * out_channels)
+                return tf.depth_to_space(x, scale)
+            return actv(_PS(x, scale, out_channels))
+        
         def residual_attention_block(x, n_filters, reduct, training=training, kernel_size=[3, 3], strides=1, actv=actv, init=init):
             in_kwargs = {'center':True, 'scale': True}
             inp = x
@@ -125,6 +128,7 @@ class Network(object):
             return x
 
         f = [1024, 512, 256, 128, 64] # filter
+        ps = [256, 128, 64, 32, 16]
         r = [4, 4, 8, 8] # reduct factor
         with tf.variable_scope('attention_decoder', reuse=reuse):
             print('w_bar.shape: ', w_bar.shape)
@@ -142,22 +146,44 @@ class Network(object):
             res = residual_attention_block(res, f[0], r[0])
 
             print('res.shape: ', res.shape)
+            
+            if config.use_pixel_shuffle == False:
+                ups_1 = upsample_block(res, f[1])
+                print('ups_1.shape: ', ups_1.shape)
+                ups_2 = upsample_block(ups_1, f[2])
+                print('ups_2.shape: ', ups_2.shape)
+                ups_3 = upsample_block(ups_2, f[3])
+                print('ups_3.shape: ', ups_3.shape)
+                ups_4 = upsample_block(ups_3, f[4])
+                print('ups_4.shape: ', ups_4.shape)
+                ups = tf.pad(ups_4, [[0, 0], [3, 3], [3, 3], [0, 0]], 'REFLECT')
+                ups = tf.layers.conv2d(ups, 3, kernel_size=7, strides=1, padding='VALID')
+                print('ups.shape: ', ups.shape)
+                out = tf.nn.tanh(ups)
 
-            ups_1 = upsample_block(res, f[1])
-            print('ups_1.shape: ', ups_1.shape)
-            ups_2 = upsample_block(ups_1, f[2])
-            print('ups_2.shape: ', ups_2.shape)
-            ups_3 = upsample_block(ups_2, f[3])
-            print('ups_3.shape: ', ups_3.shape)
-            ups_4 = upsample_block(ups_3, f[4])
-            print('ups_4.shape: ', ups_4.shape)
-            ups = tf.pad(ups_4, [[0, 0], [3, 3], [3, 3], [0, 0]], 'REFLECT')
-            ups = tf.layers.conv2d(ups, 3, kernel_size=7, strides=1, padding='VALID')
-            print('ups.shape: ', ups.shape)
-            out = tf.nn.tanh(ups)
-
-            return out, ups_1, ups_3
-
+                return out, ups_1, ups_3
+            else:
+                ps_1 = pixel_shuffle_block(res, ps[0])
+                print('ps_1.shape: ', ps_1.shape)
+                conv_1 = Utils.conv_block(ps_1, f[1], strides=1)
+                print('conv_1.shape: ', conv_1.shape)
+                ps_2 = pixel_shuffle_block(conv_1, ps[1])
+                print('ps_2.shape: ', ps_2.shape)
+                conv_2 = Utils.conv_block(ps_2, f[2], strides=1)
+                print('conv_2.shape: ', conv_2.shape)
+                ps_3 = pixel_shuffle_block(conv_2, ps[2])
+                print('ps_3.shape: ', ps_3.shape)
+                conv_3 = Utils.conv_block(ps_3, f[3], strides=1)
+                print('conv_3.shape: ', conv_3.shape)
+                ps_4 = pixel_shuffle_block(conv_3, ps[3])
+                print('ps_4.shape:', ps_4.shape)
+                ps = tf.pad(ps_4, [[0, 0], [3, 3], [3, 3], [0, 0]], 'REFLECT')
+                ps = tf.layers.conv2d(ps, 3, kernel_size=7, strides=1, padding='VALID')
+                print('ps.shape: ', ps.shape)
+                out = tf.nn.tanh(ps)
+                
+                return out, conv_1, conv_3
+                
 
     @staticmethod
     def feature_disx8(x, scope, training=True, reuse=False, actv=tf.nn.leaky_relu, use_sigmoid=False, ksize=3):

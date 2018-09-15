@@ -40,6 +40,7 @@ class Data(object):
             def _image_decoder(path):
                 im = tf.image.decode_png(tf.read_file(path), channels=3)
                 im = tf.image.convert_image_dtype(im, dtype=tf.float32)
+                im = tf.random_crop(im, [256, 384, 3])
                 return 2 * im - 1 # [0,1] -> [-1,1] (tanh range)
                     
             image = _image_decoder(image_path)
