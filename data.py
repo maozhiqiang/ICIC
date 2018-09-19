@@ -8,8 +8,9 @@ class Data(object):
 
     @staticmethod
     def load_dataframe(filename, load_semantic_maps=False):
-        df = pd.read_hdf(filename, key='df').sample(frac=1).reset_index(drop=True)
-
+        #df = pd.read_hdf(filename, key='df').sample(frac=1).reset_index(drop=True)
+        df = pd.read_hdf(filename)
+        
         if load_semantic_maps:
             return df['path'].values, df['semantic_map_path'].values
         else:

@@ -63,31 +63,54 @@ def train(config, args):
 
         sess.run(gan.test_iterator.initializer, feed_dict=feed_dict_test_init)
 
-        for epoch in range(config.num_epochs):
-
+        for epoch in range(config.num_st_epochs):
+            st_time = time.time()
             sess.run(gan.train_iterator.initializer, feed_dict=feed_dict_train_init)
-
+            iter_cnt = 0
+            while True:
+                try:
+                    iter_cnt += 1
+                    feed_dict = {gan.training_phase: True, gan.handle: train_handle}
+                    G_l, _ = sess.run([gan.G_st_loss, gan.G_st_train_op], feed_dict=feed_dict)
+                    print('St Epoch [{0}/{1}] iter[{2}] compelete! G_st_loss: {3}'.format(epoch, config.num_st_epochs, iter_cnt, G_l))
+                    if epoch % 5 == 0: Utils.single_plot(epoch, step, sess, gan, train_handle, args.name, config)
+                
+				except tf.errors.OutOfRangeError:
+                    print('End of epoch!')
+                    break
+                except KeyboardInterrupt:
+                    save_path = saver.save(sess, os.path.join(directories.checkpoints, "{}_st_last.ckpt".format(args.name)), global_step=epoch)
+                    print('Interrupted, model saved to: ', save_path)
+                    sys.exit()
+            print('St Epoch [{0}] takes {1} seconds'.format(epoch, time.time() - st_time))
+        save_path = saver.save(sess, os.path.join(directories.checkpoints, "{}_st_end.ckpt".format(args.name)), global_step=epoch)
+        
+        for epoch in range(config.num_epochs):
+            st_time = time.time()
+            sess.run(gan.train_iterator.initializer, feed_dict=feed_dict_train_init)
+            iter_cnt = 0
             # Run diagnostics
             G_loss_best, D_loss_best = Utils.run_diagnostics(gan, config, directories, sess, saver, train_handle,
                 start_time, epoch, args.name, G_loss_best, D_loss_best)
             print('diagnostics compelete!!')
             while True:
                 try:
+                    iter_cnt += 1
                     # Update generator
                     # for _ in range(8):
                     feed_dict = {gan.training_phase: True, gan.handle: train_handle}
-                    sess.run(gan.G_train_op, feed_dict=feed_dict)
-                    print('G_train_op compelete!')
+                    G_l, _ = sess.run([gan.G_loss, gan.G_train_op], feed_dict=feed_dict)
+                    #print('G_train_op compelete!')
                     # Update discriminator 
-                    step, _ = sess.run([gan.D_global_step, gan.D_train_op], feed_dict=feed_dict)
-                    print('D_train_op compelete')
+                    D_l, step, _ = sess.run([gan.D_loss, gan.D_global_step, gan.D_train_op], feed_dict=feed_dict)
+                    #print('D_train_op compelete')
                     if step % config.diagnostic_steps == 0:
                         G_loss_best, D_loss_best = Utils.run_diagnostics(gan, config, directories, sess, saver, train_handle,
                             start_time, epoch, args.name, G_loss_best, D_loss_best)
                         Utils.single_plot(epoch, step, sess, gan, train_handle, args.name, config)
                         # for _ in range(4):
                         #    sess.run(gan.G_train_op, feed_dict=feed_dict)
-
+                    print('Epoch [{0}/{1}] iter[{2}] compelete! G_loss: {3} D_loss: {4}'.format(epoch, config.num_epochs, iter_cnt, G_l, D_l))
 
                 except tf.errors.OutOfRangeError:
                     print('End of epoch!')
@@ -98,6 +121,7 @@ def train(config, args):
                         '{}_last.ckpt'.format(args.name)), global_step=epoch)
                     print('Interrupted, model saved to: ', save_path)
                     sys.exit()
+            print('Epoch [{0}] takes {1} seconds!'.format(epoch, time.time() - st_time))
 
         save_path = saver.save(sess, os.path.join(directories.checkpoints,
                                '{}_end.ckpt'.format(args.name)),

@@ -2,8 +2,9 @@
 
 class config_train(object):
     mode = 'gan-train'
-    num_epochs = 512
-    batch_size = 1
+    num_st_epochs = 15
+    num_epochs = 128
+    batch_size = 20
     ema_decay = 0.999
     G_learning_rate = 2e-4
     D_learning_rate = 2e-4
@@ -72,11 +73,11 @@ class directories(object):
     #train = 'data/cityscapes_paths_train.h5'
     #test = 'data/cityscapes_paths_test.h5'
     #val = 'data/cityscapes_paths_val.h5'
-    train = 'data/CLIC2018/CLIC_paths_train.h5'
-    test = 'data/CLIC2018/CLIC_paths_test.h5'
-    val = 'data/CLIC2018/CLIC_paths_val.h5'
+    train = 'data/CLIC_train.h5'
+    test = 'data/CLIC_test.h5'
+    val = 'data/CLIC_val.h5'
     tensorboard = 'tensorboard'
     checkpoints = 'checkpoints'
     checkpoints_best = 'checkpoints/best'
-    samples = 'samples/cityscapes'
+    samples = 'samples/CLIC'
 
