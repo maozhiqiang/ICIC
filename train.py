@@ -50,7 +50,7 @@ def train(config, args):
         sess.run(tf.local_variables_initializer())
         train_handle = sess.run(gan.train_iterator.string_handle())
         test_handle = sess.run(gan.test_iterator.string_handle())
-
+        #args.restore_last = True
         if args.restore_last and ckpt.model_checkpoint_path:
             # Continue training saved model
             saver.restore(sess, ckpt.model_checkpoint_path)
@@ -73,9 +73,9 @@ def train(config, args):
                     feed_dict = {gan.training_phase: True, gan.handle: train_handle}
                     G_l, _ = sess.run([gan.G_st_loss, gan.G_st_train_op], feed_dict=feed_dict)
                     print('St Epoch [{0}/{1}] iter[{2}] compelete! G_st_loss: {3}'.format(epoch, config.num_st_epochs, iter_cnt, G_l))
-                    if epoch % 5 == 0: Utils.single_plot(epoch, step, sess, gan, train_handle, args.name, config)
-                
-				except tf.errors.OutOfRangeError:
+                    if epoch % 5 == 0 and iter_cnt == 1:
+                        Utils.single_plot(epoch, iter_cnt + epoch * 2000, sess, gan, train_handle, args.name + "_st", config)
+                except tf.errors.OutOfRangeError:
                     print('End of epoch!')
                     break
                 except KeyboardInterrupt:

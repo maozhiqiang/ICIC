@@ -107,7 +107,6 @@ class Utils(object):
         r, g = sess.run([real, gen], feed_dict={model.training_phase:True, model.handle: handle})
         r = r[:1, :, :, :]
         g = g[:1, :, :, :]
-        ms_ssim = tf.image.ssim_multiscale(r, g, 256)
         images = list()
 
         for im, imtype in zip([r,g], ['real', 'gen']):
@@ -125,7 +124,6 @@ class Utils(object):
             # plt.gcf().clear()
             # plt.close(f)
         
-        print('MS-SSIM value: ', ms_ssim.eval())
         comparison = np.hstack(images)
         f = plt.figure()
         plt.imshow(comparison)
